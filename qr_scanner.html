@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QR Scanner</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            padding: 0;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        .header {
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            padding: 16px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .scanner-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+        }
+
+        #reader {
+            width: 100%;
+            max-width: 500px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 16px;
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        .status.scanning {
+            background: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+        }
+
+        .status.success {
+            background: #4CAF50;
+            color: white;
+            animation: pulse 0.5s;
+        }
+
+        .status.error {
+            background: #f44336;
+            color: white;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 16px;
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            border-radius: 8px;
+            max-width: 500px;
+            width: 100%;
+            word-break: break-all;
+        }
+
+        .result-label {
+            font-size: 14px;
+            color: var(--tg-theme-hint-color, #999);
+            margin-bottom: 8px;
+        }
+
+        .result-code {
+            font-size: 18px;
+            font-weight: 600;
+            font-family: monospace;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+        }
+
+        .btn-secondary {
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            color: var(--tg-theme-text-color, #000000);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .loader {
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top: 4px solid var(--tg-theme-button-color, #3390ec);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .instructions {
+            text-align: center;
+            padding: 20px;
+            color: var(--tg-theme-hint-color, #999);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📸 Сканирование QR-кода</h1>
+        </div>
+
+        <div class="scanner-container">
+            <div id="reader"></div>
+            
+            <div id="status" class="status scanning">
+                Наведите камеру на QR-код
+            </div>
+
+            <div id="result" class="result" style="display: none;">
+                <div class="result-label">Отсканированный код:</div>
+                <div id="result-code" class="result-code"></div>
+            </div>
+
+            <div id="buttons" class="buttons" style="display: none;">
+                <button class="btn btn-primary" onclick="sendCode()">
+                    ✅ Отправить
+                </button>
+                <button class="btn btn-secondary" onclick="scanAgain()">
+                    🔄 Сканировать еще
+                </button>
+            </div>
+
+            <div class="instructions">
+                💡 Попросите клиента показать QR-код<br>
+                из раздела "Мой QR-код" или "Мои ваучеры"
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tg = window.Telegram.WebApp;
+        let scannedCode = null;
+        let html5QrCode = null;
+
+        // Инициализация Telegram WebApp
+        tg.ready();
+        tg.expand();
+
+        // Настройка темы
+        document.body.style.backgroundColor = tg.themeParams.bg_color || '#ffffff';
+
+        // Функция для запуска сканера
+        function startScanner() {
+            html5QrCode = new Html5Qrcode("reader");
+            
+            const config = {
+                fps: 10,
+                qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0
+            };
+
+            html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                onScanSuccess,
+                onScanError
+            ).catch(err => {
+                console.error("Ошибка запуска камеры:", err);
+                showStatus("Ошибка доступа к камере", "error");
+            });
+        }
+
+        // Успешное сканирование
+        function onScanSuccess(decodedText, decodedResult) {
+            scannedCode = decodedText.trim().toUpperCase();
+            
+            // Останавливаем сканер
+            html5QrCode.stop().then(() => {
+                showResult(scannedCode);
+                showStatus("✅ QR-код отсканирован!", "success");
+                
+                // Вибрация при успехе
+                if (tg.HapticFeedback) {
+                    tg.HapticFeedback.notificationOccurred('success');
+                }
+            });
+        }
+
+        // Ошибка сканирования (игнорируем)
+        function onScanError(errorMessage) {
+            // Не показываем ошибки, это нормально при сканировании
+        }
+
+        // Показать результат
+        function showResult(code) {
+            document.getElementById('result-code').textContent = code;
+            document.getElementById('result').style.display = 'block';
+            document.getElementById('buttons').style.display = 'flex';
+        }
+
+        // Показать статус
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+
+        // Отправить код в бот
+        function sendCode() {
+            if (scannedCode) {
+                // Отправляем данные обратно в бот
+                tg.sendData(JSON.stringify({
+                    action: 'qr_scanned',
+                    code: scannedCode
+                }));
+                
+                // Закрываем WebApp
+                tg.close();
+            }
+        }
+
+        // Сканировать еще раз
+        function scanAgain() {
+            scannedCode = null;
+            document.getElementById('result').style.display = 'none';
+            document.getElementById('buttons').style.display = 'none';
+            showStatus("Наведите камеру на QR-код", "scanning");
+            startScanner();
+        }
+
+        // Запускаем сканер при загрузке
+        window.addEventListener('load', () => {
+            startScanner();
+        });
+
+        // Обработка закрытия
+        window.addEventListener('beforeunload', () => {
+            if (html5QrCode) {
+                html5QrCode.stop();
+            }
+        });
+    </script>
+</body>
+</html>
