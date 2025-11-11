@@ -436,16 +436,35 @@
 
         // Оформить заказ
         document.getElementById('cart-button').addEventListener('click', () => {
-            if (Object.keys(cart).length === 0) return;
+            if (Object.keys(cart).length === 0) {
+                alert('Корзина пуста');
+                return;
+            }
 
-            // Отправляем данные в бот
-            tg.sendData(JSON.stringify({
-                action: 'order',
-                cart: cart
-            }));
+            try {
+                const orderData = {
+                    action: 'order',
+                    cart: cart
+                };
+                
+                console.log('Sending data to bot:', orderData);
+                
+                // Отправляем данные в бот
+                tg.sendData(JSON.stringify(orderData));
+                
+                console.log('Data sent successfully');
 
-            if (tg.HapticFeedback) {
-                tg.HapticFeedback.notificationOccurred('success');
+                if (tg.HapticFeedback) {
+                    tg.HapticFeedback.notificationOccurred('success');
+                }
+                
+                // Закрываем WebApp после отправки
+                setTimeout(() => {
+                    tg.close();
+                }, 500);
+            } catch (error) {
+                console.error('Error sending data:', error);
+                alert('Ошибка отправки заказа. Попробуйте еще раз.');
             }
         });
 
